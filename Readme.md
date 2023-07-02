@@ -6,4 +6,4 @@
 2. 向量相加
 3. 矩阵计算
 
-[课程笔记](./Readme-less.md)
+[说明](./Readme-less.md)
