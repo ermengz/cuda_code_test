@@ -93,4 +93,23 @@ B矩阵索引： index = step*size + x
 1. 理解-核函数内分配的变量，存储空间是在SM内的寄存器register内，所以，变量是能省则省；
 2. 理解-滤波时，由结果的索引，反推回输入图像的值索引。
 
+## API 检查机制 和 事件的使用
+
+1. 由于GPU是在设备上进行的内存分配、异步执行，所以出现的很多错误,cpu端是捕获不到的；所以需要专门进行CUDA API接口的检查机制；
+2. GPU的异步运行机制，导致在进行程序计时的时候，无法准确卡点，这需要事件机制
+
+事件类型：
+```c++
+cudaEvent_t start, gpu_stop, cpu_stop;
+CHECK(cudaEventCreate(&start));
+cudaEventRecord(start);
+...
+cudaEventRecord(gpu_stop);
+...
+cudaEventRecord(cpu_stop);
+
+float gpu_time=0;
+cudaEventElapsedTime(&gpu_time, start, gpu_stop);
+
+```
 
