@@ -52,6 +52,7 @@ __global__ void matrix_mutil_gpu(const int *ma, const int *mb,  int *mc, const i
     int r = blockIdx.y * blockDim.y + threadIdx.y;
     int c = blockIdx.x * blockDim.x + threadIdx.x;
 
+    // 需要加判断的原因：分配的线程数[gridDim * threadDim]会大于实际的矩阵！！
     if( r<sm &&  c<sk){
         int temp=0;
         for (int step=0; step<sn; step++){
@@ -70,6 +71,7 @@ __global__ void matrix_mutil_gpu(const int *ma, const int *mb,  int *mc, const i
 __global__ void matrix_mutil_gpu_block(const int *ma, const int *mb,  int *mc, const int sm, const int sn,const int sk)
 {
     // 分配共享内存，共享内存是指同一个block内共享； 即同一个block内只分配一次，共同使用。
+    // 从这里也可以看出，核函数是按block为单元的线程id
     __shared__ int sub_a[BLOCK_SIZE][BLOCK_SIZE];
     __shared__ int sub_b[BLOCK_SIZE][BLOCK_SIZE];
 
@@ -82,10 +84,10 @@ __global__ void matrix_mutil_gpu_block(const int *ma, const int *mb,  int *mc, c
     int idx = 0;
     for(int step=0; step < sn/BLOCK_SIZE; step++){
         // ma的子矩阵，拷贝到sub_a 
-        int step_x = step * BLOCK_SIZE + threadIdx.x;   // X轴 blocksize的第几块
-        int step_y = r;                                 // 结果行轴，与ma的行轴一样
-        idx = step_y * sn + step_x; // ma 的子矩阵值，在全局的线程索引！！！
-        if (step_x >=sn || step_y>=sm){
+        int sub_a_x = step * BLOCK_SIZE + threadIdx.x;   // X轴 blocksize的第几块block
+        int sub_a_y = r;                                 // 结果行轴，与ma的行轴一样
+        idx = sub_a_y * sn + sub_a_x; // ma 的子矩阵值，在全局的线程索引！！！
+        if (sub_a_x >=sn || sub_a_y>=sm){
             sub_a[threadIdx.y][threadIdx.x] = 0;
         }
         else{
@@ -93,10 +95,10 @@ __global__ void matrix_mutil_gpu_block(const int *ma, const int *mb,  int *mc, c
         }
 
         // mb对于的子矩阵，拷贝到sub_b
-        step_x = c;                             // 结果列轴，与ma的列轴一样
-        step_y =step*BLOCK_SIZE + threadIdx.y;   // Y轴 blocksize的第几块
-        idx = step_y * sk + step_x;   
-        if(step_x>=sk || step_y >=sn){
+        int sub_b_x = c;                             // 结果列轴，与ma的列轴一样
+        int sub_b_y =step*BLOCK_SIZE + threadIdx.y;   // Y轴 blocksize的第几块
+        idx = sub_b_y * sk + sub_b_x;   
+        if(sub_b_x>=sk || sub_b_y >=sn){
             sub_b[threadIdx.y][threadIdx.x]  =0;
         }           
         else{
