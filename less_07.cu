@@ -28,6 +28,8 @@ __global__ void matrix_transpose_gpu(int a[ROW][COL], int b[COL][ROW], int row, 
         b[c][r] = a[r][c];
     }
 }
+// matrix_transpose_gpu函数实现时，频繁的在全局内存中读取值，效率较低。
+// 所以依赖共享内存__shared__的高速缓存机制。
 
 // 利用共享内存优化矩阵转置
 __global__ void matrix_shared_transpose_gpu(int a[ROW][COL], int b[COL][ROW], int row, int col){
@@ -43,7 +45,7 @@ __global__ void matrix_shared_transpose_gpu(int a[ROW][COL], int b[COL][ROW], in
     }
     __syncthreads();
 
-    // 转置后的索引
+    // 转置后，分块数据中的x\y的索引(转换到b中的全局索引)
     int y1 = threadIdx.y + blockIdx.x * blockDim.x;
     int x1 = threadIdx.x + blockIdx.y * blockDim.y;
     if (x1 < row && y1<col){
@@ -86,8 +88,8 @@ int main(){
     cudaEventRecord(start);
     cudaEventSynchronize(start);
     for (int i=0;i<20;i++){
-        // matrix_transpose_gpu<<<gridsize, blocksize>>>(maxtri_a, maxtri_b_gpu, ROW, COL);
-        matrix_shared_transpose_gpu<<<gridsize, blocksize>>>(maxtri_a, maxtri_b_gpu, ROW, COL);
+        matrix_transpose_gpu<<<gridsize, blocksize>>>(maxtri_a, maxtri_b_gpu, ROW, COL);
+        // matrix_shared_transpose_gpu<<<gridsize, blocksize>>>(maxtri_a, maxtri_b_gpu, ROW, COL);
         cudaDeviceSynchronize();
         
     }

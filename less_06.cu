@@ -43,7 +43,7 @@
 #include "stdio.h"
 
 
-#define BLOCK_SIZE 16
+#define BLOCK_SIZE 2
 
 // 常规的矩阵乘法
 __global__ void matrix_mutil_gpu(const int *ma, const int *mb,  int *mc, const int sm, const int sn,const int sk)
@@ -63,6 +63,9 @@ __global__ void matrix_mutil_gpu(const int *ma, const int *mb,  int *mc, const i
     }
 
 }
+
+// 本段理解参考：https://zhuanlan.zhihu.com/p/434513198
+
 // 如果矩阵a和矩阵b的值太大，矩阵c的结果值，会频繁的操作对ma、ma存取操作。
 // cudamalloc存储的数据是在全局内存中，即板卡内存中，存取速度慢；
 // 所以，考虑将数据存到sm的共享内存中，但是共享内存容量有限，则需要对矩阵进行分块计算
@@ -92,6 +95,7 @@ __global__ void matrix_mutil_gpu_block(const int *ma, const int *mb,  int *mc, c
         }
         else{
             sub_a[threadIdx.y][threadIdx.x] = ma[idx];
+            printf("r=%d, c=%d, ma=%d\n",r,c,ma[idx]);
         }
 
         // mb对于的子矩阵，拷贝到sub_b
@@ -103,12 +107,15 @@ __global__ void matrix_mutil_gpu_block(const int *ma, const int *mb,  int *mc, c
         }           
         else{
             sub_b[threadIdx.y][threadIdx.x] = mb[idx];
+            printf("r=%d, c=%d, mb=%d\n",r,c,mb[idx]);
         }
-
+        // 当__syncthreads被调用时，在同一个线程块中每个线程都必须等待直至该线程块中所有其他线程都已经达到这个同步点。
+        // 在栅栏之前所有线程产生的所有全局内存和共享内存 访问，将会在栅栏后对线程块中所有其他的线程可见.
         __syncthreads();
         // 共享内存内计算
         for(int i=0;i<BLOCK_SIZE;i++){
             temp += sub_a[threadIdx.y][i] * sub_b[i][threadIdx.x];
+            printf("r=%d, c=%d, sub_a=%d, sub_b=%d\n",r,c,sub_a[threadIdx.y][i], sub_b[i][threadIdx.x]);
         }
         __syncthreads();
 
@@ -142,9 +149,9 @@ void matrix_mutil_cpu(const int *ma,const int *mb, int *mc,const int sm,const in
 // Matrix_b N*K
 // 结果 Matrix_c M*K
 // 定义矩阵大小
-constexpr int M = 1000;
-constexpr int N = 512;
-constexpr int K = 1000;
+constexpr int M = 2;
+constexpr int N = 4;
+constexpr int K = 2;
 // 统一内存，分配空间, 不允许放在host侧的函数内
 __managed__ int matrixa[M*N];
 __managed__ int matrixb[N*K];
@@ -158,19 +165,19 @@ int main(int arc, char** argv){
     for (int r = 0; r < M; r++)
     {
         for(int c=0; c<N; c++){
-            matrixa[r*N +c] = rand()%1024;
+            matrixa[r*N +c] = r*BLOCK_SIZE+c; //rand()%1024;
         }
     }
     for (int r = 0; r < N; r++)
     {
         for(int c=0; c<K; c++){
-            matrixb[r*K +c] = rand()%1024;
+            matrixb[r*K +c] = r*BLOCK_SIZE+c;// rand()%1024;
         }
     }
 
     // 核函数计算
     dim3 threadPerBlock(BLOCK_SIZE, BLOCK_SIZE);
-    dim3 blockPerGrid((M + BLOCK_SIZE - 1) / BLOCK_SIZE, (K+BLOCK_SIZE-1)/BLOCK_SIZE);
+    dim3 blockPerGrid((K + BLOCK_SIZE - 1) / BLOCK_SIZE, (M+BLOCK_SIZE-1)/BLOCK_SIZE);
     // matrix_mutil_gpu<<<blockPerGrid, threadPerBlock>>>(matrixa, matrixb, mc_gpu, M, N, K);
     matrix_mutil_gpu_block<<<blockPerGrid, threadPerBlock>>>(matrixa, matrixb, mc_gpu, M, N, K);
     
@@ -183,7 +190,8 @@ int main(int arc, char** argv){
     for (int r=0; r<M; r++){
         for (int c = 0; c < K; c++)
         {
-            if (abs(mc_cpu[r*K+c] - mc_gpu[r*K+c]) > (1.0e-10)){
+            // if (abs(mc_cpu[r*K+c] - mc_gpu[r*K+c]) > (1.0e-10)){
+            if (fabs(mc_cpu[r*K+c] - mc_gpu[r*K+c]) > (1.0e-10)){
                 // printf("cpu=%d,gpu=%d,",mc_cpu[r*K+c] , mc_gpu[r*K+c]);
                 error = true;
             }
